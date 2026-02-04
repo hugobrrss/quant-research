@@ -42,6 +42,8 @@ def add_bespoke_momentum(df: pd.DataFrame, k: int, p: int) -> pd.DataFrame:
         logger.warning(f"Start date must be before end date")
     else:
         df['mom_'+str(k)+'_'+str(p)] = (df['Close'].shift(k) - df['Close'].shift(p)) / df['Close'].shift(p)
+
+    logger.info(f"Added bespoke momentum features {'mom_'+str(k)+'_'+str(p)}")
     return df
 
 def add_volatility_features(df: pd.DataFrame) -> pd.DataFrame:

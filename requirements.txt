@@ -23,3 +23,7 @@ python-dotenv>=1.0.0
 pyarrow
 
 torch
+
+ib_insync
+
+fredapi

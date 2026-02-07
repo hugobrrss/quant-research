@@ -27,3 +27,5 @@ torch
 ib_insync
 
 fredapi
+
+pyyaml

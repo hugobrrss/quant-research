@@ -8,8 +8,6 @@ import os
 import yaml
 from pathlib import Path
 
-from networkx.classes import is_empty
-
 logger = logging.getLogger(__name__)
 
 load_dotenv()
@@ -38,7 +36,7 @@ def fetch_fred_series(series_id: str, start_date: str = None, end_date: str = No
         logger.warning(f"Failed to fetch FRED series {series_id}: {e}")
         return pd.DataFrame()
 
-def fetch_multiple_fred_series(series_ids: list[str], start_date: str, end_date: str) -> pd.DataFrame:
+def fetch_multiple_fred_series(series_ids: list[str], start_date: str = None, end_date: str = None) -> pd.DataFrame:
     all_df = []
     for series_id in series_ids:
 
@@ -55,7 +53,7 @@ def fetch_multiple_fred_series(series_ids: list[str], start_date: str, end_date:
         return pd.DataFrame()
 
 
-def fetch_macro_universe(group_names: str | list[str], start_date: str, end_date: str) -> pd.DataFrame:
+def fetch_macro_universe(group_names: str | list[str], start_date: str = None, end_date: str = None) -> pd.DataFrame:
     """
     This function fetches all the variables from a macro universe, defined in a YAML file.
     Args:

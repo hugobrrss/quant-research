@@ -6,49 +6,47 @@ import yfinance as yf
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
+import logging
+import time
 
-def fetch_single_ticker(
-        ticker: str,
-        start_date: str,
-        end_date: str
-) -> pd.DataFrame:
-    """
-    Fetch daily OHLCV for a single ticker.
+logger = logging.getLogger(__name__)
 
-    Arguments:
-        ticker: stock ticker (eg 'AAPL')
-        start_date: start date in 'YYYY-MM-DD' format
-        end_date: end date in 'YYYY-MM-DD' format
-
-    Returns:
-        DataFrame with columns: Open, High, Low, Close, Adj Close, Volume
-    """
-    data = yf.download(ticker, start_date, end_date, progress=False)
-    # Flatten MultiIndex column if present
-    if isinstance(data.columns, pd.MultiIndex):
-        data.columns = data.columns.get_level_values(0)
-
-    data['ticker'] = ticker # add ticker to the DataFrame to anticipate multiple tickers fetching
-    return data
-
-def fetch_multiple_tickers(
+def fetch_tickers(
         tickers: list[str],
         start_date: str,
         end_date: str
 ) -> pd.DataFrame:
     """
-    Same but for multiple tickers, stacked into a single DataFrame
-    Arguments:
-        tickers: list of tickers
-    Rest is unchanged
-    """
-    all_data = []
-    for ticker in tickers:
-        df = fetch_single_ticker(ticker, start_date, end_date)
-        all_data.append(df)
+    Fetch daily OHLCV for a list of ticker(s).
 
-    combined = pd.concat(all_data)
-    return combined
+    Arguments:
+        tickers: list of tickers (eg ['AAPL'], or ['MSFT', 'AMZN', 'GOOG'] for multiple tickers)
+        start_date: start date in 'YYYY-MM-DD' format
+        end_date: end date in 'YYYY-MM-DD' format
+
+    Returns:
+        DataFrame with columns: Open, High, Low, Close, Adj Close, Volume, Ticker
+    """
+    all_df = []
+    for ticker in tickers:
+        df = yf.download(ticker, start_date, end_date)
+
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+        if not df.empty:
+            df['ticker'] = ticker
+            all_df.append(df)
+
+        time.sleep(0.5)
+
+    if all_df:
+        combined_df = pd.concat(all_df)
+        logger.info(f"Fetched data for {len(tickers)} tickers ({len(combined_df)} rows")
+        return combined_df
+    else:
+        return pd.DataFrame()
+
 
 def save_raw_data(df: pd.DataFrame, filename: str) -> Path:
     """
@@ -70,7 +68,7 @@ if __name__ == "__main__":
     start_date = '2020-01-01'
     end_date = '2020-12-31'
 
-    df = fetch_multiple_tickers(tickers, start_date, end_date)
+    df = fetch_tickers(tickers, start_date, end_date)
     print(f"\nFetched {len(df)} rows")
     print(df.head())
 

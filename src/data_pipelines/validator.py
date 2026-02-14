@@ -1,0 +1,119 @@
+"""
+This is a pipeline-level validation script
+It checks:
+    1. the percentage of tickers for which data have actually been fetched
+    2. outlier values
+    3. price is positive
+    4. general problems with fetching
+"""
+
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import logging
+
+# set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+def validate_pipeline_data(df: pd.DataFrame,
+                           expected_tickers: list[str],
+                           mode: str,
+                           expected_date: str=None) -> dict:
+    """
+    Add description
+    Arguments:
+        df: raw DataFrame of prices
+        expected_tickers: list of tickers expected to be fetched
+        expected_date: expected date of data to be fetched, format 'YYYY-MM-DD'
+        mode: 'backfill' or 'daily'
+    Returns:
+        a summary dictionary with severity levels 'Ok', 'warning' or 'critical', and the associated warnings as values
+        the dictionary is then used for data processing:
+            Ok: everything is fine, proceed
+            Warning: something is off but tolerable and/or the processor can fix it (duplicates, some NaN values, a few missing tickers)
+            Critical: the data is fundamentally broken and not even worth processing
+    """
+    validator_summary = {"ok": [], "warning": [], "critical": []}
+
+    n_daily = len(expected_tickers)
+    threshold_ok = 0.95
+    threshold_warning = 0.8
+
+
+    if mode == 'backfill':
+
+        # outlier
+        df['daily_return'] = df['Close'].pct_change()
+        threshold_outlier = 0.5
+
+        outlier_tickers = list(df['ticker'][np.abs(df['daily_return']) > threshold_outlier])
+        if outlier_tickers:
+            validator_summary["warning"].append(f"Found outlier in tickers: {outlier_tickers}")
+
+    elif mode == 'daily':
+
+        logger.info("Starting daily validation")
+
+        # empty data
+        if df.empty:
+            msg = f"Didn't fetch anything, data is empty"
+            logger.critical(msg)
+            validator_summary["critical"].append(msg)
+            return validator_summary
+
+        # missing tickers
+        actual_tickers = df['ticker'].nunique()
+        msg = f"{(actual_tickers / n_daily)*100}% of expected tickers were fetched"
+        if actual_tickers > n_daily * threshold_ok:
+            validator_summary["ok"].append(msg)
+        elif n_daily * threshold_ok > actual_tickers > n_daily * threshold_warning:
+            logger.warning(msg)
+            validator_summary["warning"].append(msg)
+        else:
+            logger.critical(msg)
+            validator_summary["critical"].append(msg)
+
+        # negative prices
+        price_columns = ['Open','High','Low','Close']
+        for col in price_columns:
+            msg = f"Found negative price(s) in {col}"
+            if (df[col]<0).any():
+                logger.warning(msg)
+                validator_summary["warning"].append(msg)
+
+        # all prices NaN for a ticker
+        tickers_allnan = list(df['ticker'][df[price_columns].isna().all(axis=1)])
+        if tickers_allnan:
+            msg = f"Found {len(tickers_allnan)} tickers with all NaN values: {tickers_allnan}"
+            logger.warning(msg)
+            validator_summary["warning"].append(msg)
+
+        # duplicate rows
+        if df.duplicated().any():
+            duplicated_tickers = list(df['ticker'][df.duplicated()])
+            msg = f"Found duplicate tickers: {duplicated_tickers}"
+            logger.warning(msg)
+            validator_summary["warning"].append(msg)
+
+        # check that date is as expected
+        if expected_date is not None:
+            dates_in_data = df.index.normalize().unique()
+            expected = pd.Timestamp(expected_date)
+
+            if len(dates_in_data) == 1:
+                if dates_in_data[0] != expected:
+                    msg = f"Expected date: {expected_date}, but got {dates_in_data[0]}"
+                    logger.critical(msg)
+                    validator_summary["critical"].append(msg)
+            else:
+                msg = f"Expected 1 date, found {len(dates_in_data)}: {dates_in_data.tolist()}"
+                logger.critical(msg)
+                validator_summary["critical"].append(msg)
+
+        logger.info(f"Validation completed: {len(validator_summary["warning"])} warnings, {len(validator_summary["critical"])} critical")
+        return validator_summary
+
+
+    return validator_summary

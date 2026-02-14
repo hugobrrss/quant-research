@@ -27,6 +27,9 @@ def fetch_tickers(
     Returns:
         DataFrame with columns: Open, High, Low, Close, Adj Close, Volume, Ticker
     """
+    if not isinstance(tickers, list):
+        tickers = [tickers]
+
     all_df = []
     for ticker in tickers:
         df = yf.download(ticker, start_date, end_date)
@@ -42,7 +45,7 @@ def fetch_tickers(
 
     if all_df:
         combined_df = pd.concat(all_df)
-        logger.info(f"Fetched data for {len(tickers)} tickers ({len(combined_df)} rows")
+        logger.info(f"Fetched data for {len(tickers)} tickers ({len(combined_df)} rows)")
         return combined_df
     else:
         return pd.DataFrame()

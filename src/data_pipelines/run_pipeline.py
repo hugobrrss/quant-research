@@ -1,6 +1,8 @@
 """
 Daily data pipeline orchestration script
-Fetches, validates, processes, and stores market data
+Fetches, validates, processes, and stores market data. In particular, the pipeline flow is as follows:
+    fetch → validate → if critical, stop and notify
+                     → if ok/warning, proceed to processor → processor handles the warnings (drop duplicates, fill NaN, etc.)
 """
 
 import logging
@@ -9,10 +11,9 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-def run_equity_pipeline(tickers: str | list[str],
+def run_equity_pipeline(tickers: list[str],
                         source: str,
-                        start_date: str = None,
-                        end_date: str = None):
+                        name: str):
     """
     Run the full equity data pipeline.
     Steps are:
@@ -20,17 +21,54 @@ def run_equity_pipeline(tickers: str | list[str],
         2. validate data
         3. process data
         4. build features
-        5. store to disk
+        5. save to disk
 
     Arguments:
-        tickers: string of list of strings (tickers)
-        start_date/end_date: date in string format (YYYY-MM-DD)
+        tickers: list of strings (tickers)
         source: 'yahoo' or 'IB' depending on which source is used for fetching data
+        name: name of the file to which data is saved, should correspond to a universe of stocks, eg sp500
     """
-    project_root = Path(__file__).parent.parent.parent
+    if not isinstance(tickers, list):
+        tickers = [tickers]
+
+    date = datetime.now()
 
     if source == 'yahoo':
-        from src.data_pipelines.yahoo_fetcher import *
-
+        from src.data_pipelines.yahoo_fetcher import fetch_tickers
+        data_raw = fetch_tickers(tickers, date.strftime("%Y-%m-%d"), date.strftime("%Y-%m-%d"))
 
     elif source == 'IB':
+        from src.execution.ib_connection import IBConnection
+        from src.data_pipelines.ib_fetcher import fetch_historical_data
+
+        conn = IBConnection()
+        conn.connect()
+        contract_specs = []
+        for ticker in tickers:
+            ticker_dic = {'sec_type': 'STK', 'symbol': ticker}
+            contract_specs.append(ticker_dic)
+
+        data_raw = fetch_historical_data(conn, contract_specs, duration='1 D', bar_size='1 day')
+
+    """
+    below up to the print line is not correct:
+    I want to:
+        1. find the latest version of the file
+        2. append with today's data
+        3. save it and update the file name so it reads as the latest date
+    """
+    project_root = Path(__file__).parent.parent.parent # this assumes src/data_pipelines
+    raw_path = project_root / "data" / "raw" / (name + '_' + datetime.now().strftime("%Y%m%d"))
+
+    data_raw.to_parquet(raw_path)
+    print(f"Saved raw data to {raw_path}")
+
+
+    from data_pipelines.archives.validators_singleticker import validate_price_data
+    validate_price_data(data_raw, tickers)
+
+    # process
+
+    # create features from processed data
+
+

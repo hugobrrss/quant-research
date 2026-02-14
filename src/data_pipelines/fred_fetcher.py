@@ -25,6 +25,9 @@ def fetch_fred_series(series_ids: list[str],
         - a DataFrame with columns date, value, series_id
           the index is NOT the date on purpose, to anticipate multiple series fetching with different dates and frequency
     """
+    if not isinstance(series_ids, list):
+        series_ids = [series_ids]
+
     all_df = []
     for series_id in series_ids:
         try:

@@ -5,98 +5,49 @@ Cleans and processes validated price data
 import pandas as pd
 import numpy as np
 import logging
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-def fill_missing_prices(df: pd.DataFrame, method: str = 'ffill') -> pd.DataFrame:
+def process_pipeline_data(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Fill missing price values
-
-    Args:
-        df: DataFrame of prices
-        method: 'ffill' for forward fill, or 'drop'
-
-    Returns:
-        DataFrame with missing values handled
+    Processes previously validated price data
+    The processor always reads the full dataframe (either appended with last day's data or entirely fetched)
+    Steps:
+        1. remove duplicates
+        2. fill missing values
+        3. drop all NaN tickers
+        5. compute daily returns
+        4. check and flag outliers (based on daily returns)
     """
 
+    df = df.copy()
+    df = df.sort_values('ticker').sort_index()
+
+    outlier_thresh = 0.5
+
+    # remove duplicates
+    n_beforedropdup = len(df)
+    df = df.drop_duplicates()
+    logger.info(f"Dropped {n_beforedropdup-len(df)} rows of duplicate observations")
+
+    # fill missing values (forward fill) - some NaN could remain if they are at the start of a ticker's history
     price_cols = ['High', 'Low', 'Open', 'Close']
-    missing_before = df[price_cols].isna().sum().sum()
+    nan_before = df[price_cols].isna().sum().sum()
+    df[price_cols] = df.groupby('ticker')[price_cols].transform('ffill')
+    nan_after = df[price_cols].isna().sum().sum()
+    logger.info(f"Filled {nan_before - nan_after} missing prices ({nan_after} remaining)")
 
-    if method == 'ffill':
-        df[price_cols] = df[price_cols].ffill()
+    # drop all NaN tickers
+    tickers_allnan = df.groupby('ticker')[price_cols].apply(lambda x: x.isna().all().all())
+    tickers_to_drop = tickers_allnan[tickers_allnan].index
+    df = df[~df['ticker'].isin(tickers_to_drop)]
+    logger.info(f"Dropped {len(tickers_to_drop)} tickers (all NaN prices)")
 
-    elif method == 'drop':
-        df = df.dropna(subset=price_cols)
+    # compute daily returns
+    df['return'] = df.groupby('ticker')['Close'].pct_change()
 
-    missing_after = df[price_cols].isna().sum().sum()
-
-    if missing_before > 0:
-        logger.info(f"Filled {missing_before-missing_after} missing prices")
+    # check and flag outliers
+    df['outliers'] = np.abs(df['return']) > outlier_thresh
+    logger.info(f"Found {df['outliers'].sum()} potential outliers (shown in column 'outliers')")
 
     return df
-
-def detect_outliers(df: pd.DataFrame, column: str = "Close", threshold: float = 0.5) -> pd.Series:
-    """
-    Detect outliers based on daily returns
-    A return above the threshold (50% by default) is suspicious
-    Likely a data error or stock split not adjusted
-
-    Args:
-        df: DataFrame of prices
-        column: column name to look for
-        threshold: threshold for outliers
-
-    Returns:
-        Boolean series with outliers detected
-        """
-
-    returns = df[column].pct_change().abs()
-    outliers = returns > threshold
-
-    if outliers.any():
-        outliers_dates = df.index[outliers].tolist()
-        logger.info(f"Outliers detected on {outliers_dates}")
-
-    return outliers
-
-def compute_returns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add:
-        - daily_return: a column with daily returns in the DataFrame
-        - log_return: a column with log returns in the DataFrame
-    """
-
-    df = df.copy()
-    df['daily_return'] = df['Close'].pct_change()
-    df['log_return'] = np.log(df['Close'] / df['Close'].shift(1))
-    return df
-
-def process_ticker_data(
-        df: pd.DataFrame,
-        ticker: str,
-        fill_method: str = 'ffill',
-        check_outliers: bool = True
-) -> pd.DataFrame:
-    """
-    Full processing timeline for a single ticker
-    Returns:
-        Processed DataFrame with added returns
-    """
-    df = df.copy()
-    df = fill_missing_prices(df, method=fill_method)
-    if check_outliers:
-        df['is_outlier'] = detect_outliers(df)
-    df = compute_returns(df)
-
-    logger.info(f"{ticker} processing complete {len(df)} rows")
-    return df
-
-def save_processed_data(df: pd.DataFrame, filename: str) -> Path:
-    """"Save processed data to data/processed """
-    project_root = Path(__file__).parent.parent.parent
-    processed_path = project_root / "data" / "processed" / filename
-    df.to_parquet(processed_path)
-    logger.info(f"Saved processed data to {processed_path}")
-    return processed_path

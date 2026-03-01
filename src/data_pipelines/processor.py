@@ -26,9 +26,9 @@ def process_pipeline_data(df: pd.DataFrame) -> pd.DataFrame:
     outlier_thresh = 0.5
 
     # remove duplicates
-    n_beforedropdup = len(df)
+    n_beforedrop = len(df)
     df = df.drop_duplicates()
-    logger.info(f"Dropped {n_beforedropdup-len(df)} rows of duplicate observations")
+    logger.info(f"Dropped {n_beforedrop-len(df)} rows of duplicate observations")
 
     # fill missing values (forward fill) - some NaN could remain if they are at the start of a ticker's history
     price_cols = ['High', 'Low', 'Open', 'Close']

@@ -9,7 +9,6 @@ It checks:
 
 import pandas as pd
 import numpy as np
-from collections import Counter
 import logging
 
 # set up logging

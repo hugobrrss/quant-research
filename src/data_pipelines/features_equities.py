@@ -1,5 +1,6 @@
 """
-Features engineering for price data
+Features engineering for equity momentum strategy
+The data read by the script has been validated and processed
 """
 
 import pandas as pd
@@ -23,10 +24,10 @@ def add_momentum_features(df: pd.DataFrame) -> pd.DataFrame:
         'mom_5d': 5,
         'mom_21d': 21,
         'mom_63d': 63,
-        'mom_252d': 25
+        'mom_252d': 252
     }
     for name, window in windows.items():
-        df[name] = df['Close'].pct_change(window)
+        df[name] = df.groupby('ticker')['Close'].pct_change(window)
 
     logger.info(f"Added momentum features {list(windows.keys())}")
     return df
@@ -41,7 +42,8 @@ def add_bespoke_momentum(df: pd.DataFrame, k: int, p: int) -> pd.DataFrame:
     if k >= p:
         logger.warning(f"Start date must be before end date")
     else:
-        df['mom_'+str(k)+'_'+str(p)] = (df['Close'].shift(k) - df['Close'].shift(p)) / df['Close'].shift(p)
+        df['mom_'+str(k)+'_'+str(p)] = ((df.groupby('ticker')['Close'].shift(k) - df.groupby('ticker')['Close'].shift(p))
+                                        / df.groupby('ticker')['Close'].shift(p))
 
     logger.info(f"Added bespoke momentum features {'mom_'+str(k)+'_'+str(p)}")
     return df
@@ -56,8 +58,8 @@ def add_volatility_features(df: pd.DataFrame) -> pd.DataFrame:
         - range_hl: High-Low range as % of close
     """
     df = df.copy()
-    df['vol_21d'] = df['daily_return'].rolling(21).std() * np.sqrt(252)
-    df['vol_63d'] = df['daily_return'].rolling(63).std() * np.sqrt(252)
+    df['vol_21d'] = df.groupby('ticker')['return'].transform(lambda x: x.rolling(21).std() * np.sqrt(252))
+    df['vol_63d'] = df.groupby('ticker')['return'].transform(lambda x: x.rolling(63).std() * np.sqrt(252))
     df['range_hl'] = (df['High'] - df['Low']) / df['Close']
 
     logger.info(f"Added volatility features: vol_21d, vol_63d, range_hl")
@@ -72,13 +74,13 @@ def add_volume_features(df: pd.DataFrame) -> pd.DataFrame:
         - volume_ratio: Today's volume vs 21-day average
     """
     df = df.copy()
-    df['volume_ma_21d'] = df['Volume'].rolling(21).mean()
+    df['volume_ma_21d'] = df.groupby('ticker')['Volume'].transform(lambda x: x.rolling(21).mean())
     df['volume_ratio'] = df['Volume'] / df['volume_ma_21d']
 
     logger.info(f"Added volume-based features: volume_ma_21d, volume_ratio")
     return df
 
-def add_mean_revenue_features(df: pd.DataFrame) -> pd.DataFrame:
+def add_mean_rev_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add mean reversion features.
 
@@ -89,56 +91,13 @@ def add_mean_revenue_features(df: pd.DataFrame) -> pd.DataFrame:
         - dist_from_ma_50d: % distance from 50-day MA
     """
     df = df.copy()
-    df['ma_21d'] = df['Close'].rolling(21).mean()
-    df['ma_50d'] = df['Close'].rolling(50).mean()
-    df['dist_from_ma_21d'] = (df['Close'] - df['ma_21d']) / df['ma_21d']
-    df['dist_from_ma_50d'] = (df['Close'] - df['ma_50d']) / df['ma_50d']
+    df['ma_21d'] = df.groupby('ticker')['Close'].transform(lambda x: x.rolling(21).mean())
+    df['ma_50d'] = df.groupby('ticker')['Close'].transform(lambda x: x.rolling(50).mean())
+    df['dist_from_ma_21d'] = (df.groupby('ticker')['Close'] - df.groupby('ticker')['ma_21d']) / df.groupby('ticker')['ma_21d']
+    df['dist_from_ma_50d'] = (df.groupby('ticker')['Close'] - df.groupby('ticker')['ma_50d']) / df.groupby('ticker')['ma_50d']
 
     logger.info(f"Added mean-reversion features: ma_21d, ma_50d, dist_from_ma_21d, dist_from_ma_50d")
     return df
 
-def build_features(
-    df: pd.DataFrame,
-    ticker: str,
-    bespoke_momentum_params: list[tuple[int, int]] | None = None # Either a list of tuples or None; default value is None
-) -> pd.DataFrame:
-    """
-    Full feature engineering pipeline.
 
-    Args:
-        df: Processed price data (must have daily_return column)
-        ticker: Ticker symbol for logging
-        bespoke_momentum_params: List of (k, p) tuples for bespoke momentum
-            Default is [(21,252),(1,21)] -> standard momentum and short-term reversal
-    Returns:
-        DataFrame with all features added
-    """
-    df = df.copy()
-    logger.info(f"Building features for {ticker}")
-
-    df = add_volume_features(df)
-    df = add_momentum_features(df)
-    df = add_mean_revenue_features(df)
-    df = add_volatility_features(df)
-
-    # Bespoke momentum factors
-    if bespoke_momentum_params is None:
-        bespoke_momentum_params = [(21, 252), (1, 21)]
-
-    for k, p in bespoke_momentum_params:
-        df = add_bespoke_momentum(df, k, p)
-
-    # NaNs are expected due to rolling window
-    nan_rows = df.isna().any(axis=1).sum()
-    logger.info(f"{ticker}: Features complete. {nan_rows} rows have NaN values (because of rolling windows)")
-
-    return df
-
-def save_features(df: pd.DataFrame, filename: str) -> Path:
-    project_dir = Path(__file__).parent.parent.parent
-    features_path = project_dir / 'features' / filename
-
-    df.to_parquet(features_path)
-    logger.info(f"Saved features to {filename}")
-    return features_path
 

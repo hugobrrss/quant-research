@@ -7,11 +7,13 @@ Fetches, validates, processes, and stores market data. In particular, the pipeli
                      after processing -> features building and saving of data
 """
 
+import pandas as pd
 import logging
 from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
 
 def run_equity_pipeline(tickers: list[str],
                         source: str,
@@ -33,6 +35,9 @@ def run_equity_pipeline(tickers: list[str],
 
     date_today = datetime.now()
 
+    project_root = Path(__file__).parent.parent.parent  # this assumes src/data_pipelines
+    raw_path = project_root / "data" / "raw" / name
+
     if source == 'yahoo':
         from src.data_pipelines.yahoo_fetcher import fetch_tickers
         data_raw = fetch_tickers(tickers, date_today.strftime("%Y-%m-%d"), date_today.strftime("%Y-%m-%d"))
@@ -50,32 +55,48 @@ def run_equity_pipeline(tickers: list[str],
 
         data_raw = fetch_historical_data(conn, contract_specs, duration='1 D', bar_size='1 day')
 
+        conn.disconnect()
+
     # Validate raw data
     from src.data_pipelines.validator import validate_pipeline_data
-    validation_dict = validate_pipeline_data(data_raw,tickers,"daily",date_today.strftime("%Y-%m-%d"))
+    validation_dict = validate_pipeline_data(data_raw, tickers, "daily", date_today.strftime("%Y-%m-%d"))
 
+    if validation_dict['critical']:
+        # instructions to stop the pipeline and obtain an alert
+        logger.info(f"Critical issue(s) with the fetched data")
+        for msg in validation_dict['critical']:
+            print(msg)
 
+        # here something to obtain email and SMS alerts
+        return
 
-    # Process validated data
+    # Load current file and append the new data
+    df = pd.read_parquet(raw_path)
+    df = pd.concat([df, data_raw], ignore_index=False)
+    df = df.sort_values(['ticker'])
+    df = df.sort_index()
 
+    # Save new raw_data
+    df.to_parquet(raw_path)
 
-    """
-    below up to the print line is not correct:
-    I want to:
-        1. find the latest version of the file
-        2. append with today's data
-        3. save it and update the file name so it reads as the latest date
-    """
-    project_root = Path(__file__).parent.parent.parent # this assumes src/data_pipelines
-    raw_path = project_root / "data" / "raw" / (name + '_' + datetime.now().strftime("%Y%m%d"))
+    # Process data and save processed file
+    from src.data_pipelines.processor import process_pipeline_data
+    df_processed = process_pipeline_data(df)
+    processed_path = project_root / "data" / "processed" / name
+    df_processed.to_parquet(processed_path)
 
-    data_raw.to_parquet(raw_path)
-    print(f"Saved raw data to {raw_path}")
+    # Build features and saved data containing the features
+    import src.data_pipelines.features_equities as feat
+    df_features = feat.add_momentum_features(df_processed)
 
+    # bespoke momentum: standard momentum (last year except last month), and short-term reversal
+    bespoke_momentum_params = [(21, 252), (1, 21)]
+    for k, p in bespoke_momentum_params:
+        df_features = feat.add_bespoke_momentum(df_features, k, p)
 
+    df_features = feat.add_volume_features(df_features)
+    df_features = feat.add_volatility_features(df_features)
+    df_features = feat.add_mean_rev_features(df_features)
 
-    # process
-
-    # create features from processed data
-
-
+    features_path = project_root / "data" / "features" / name
+    df_features.to_parquet(features_path)

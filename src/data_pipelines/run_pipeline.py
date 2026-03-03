@@ -11,7 +11,12 @@ import pandas as pd
 import logging
 from datetime import datetime
 from pathlib import Path
+from src.data_pipelines.validator import validate_pipeline_data
+from src.data_pipelines.processor import process_pipeline_data
+import src.data_pipelines.features_equities as feat
 
+# set up logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -33,10 +38,25 @@ def run_equity_pipeline(tickers: list[str],
         name: name of the file to which data is saved, should correspond to a universe of stocks, eg sp500
     """
 
-    date_today = datetime.now()
+    date_today = datetime.now().date()
 
     project_root = Path(__file__).parent.parent.parent  # this assumes src/data_pipelines
-    raw_path = project_root / "data" / "raw" / name
+    data_path = project_root / "data" / "features" / f"{name}_production.parquet"
+
+    # Load current data
+    if not data_path.exists():
+        raise FileNotFoundError(f"No existing dataset found at {data_path}. Run backfill first.")
+
+    df_existing = pd.read_parquet(data_path)
+
+    # Keep only base columns (for proper concatenation later)
+    base_columns = ['Open', 'High', 'Low', 'Close', 'Volume', 'ticker']
+    df_existing = df_existing[base_columns]
+
+    # Check that today's date is not already in data to prevent the pipeline running twice on a single day
+    if pd.Timestamp(date_today) in df_existing.index.normalize():
+        logger.info(f"Today's ({date_today}) data already fetched")
+        return
 
     if source == 'yahoo':
         from src.data_pipelines.yahoo_fetcher import fetch_tickers
@@ -47,46 +67,45 @@ def run_equity_pipeline(tickers: list[str],
         from src.data_pipelines.ib_fetcher import fetch_historical_data
 
         conn = IBConnection()
-        conn.connect()
-        contract_specs = []
-        for ticker in tickers:
-            ticker_dic = {'sec_type': 'STK', 'symbol': ticker}
-            contract_specs.append(ticker_dic)
+        try:
+            conn.connect()
+            contract_specs = []
+            for ticker in tickers:
+                ticker_dic = {'sec_type': 'STK', 'symbol': ticker}
+                contract_specs.append(ticker_dic)
 
-        data_raw = fetch_historical_data(conn, contract_specs, duration='1 D', bar_size='1 day')
+            data_raw = fetch_historical_data(conn, contract_specs, duration='1 D', bar_size='1 day')
+        finally:
+            conn.disconnect()
 
-        conn.disconnect()
+    else:
+        raise ValueError(f"Unknown source: {source}")
 
     # Validate raw data
-    from src.data_pipelines.validator import validate_pipeline_data
     validation_dict = validate_pipeline_data(data_raw, tickers, "daily", date_today.strftime("%Y-%m-%d"))
 
     if validation_dict['critical']:
         # instructions to stop the pipeline and obtain an alert
-        logger.info(f"Critical issue(s) with the fetched data")
+        logger.critical(f"Critical issue(s) with the fetched data")
         for msg in validation_dict['critical']:
             print(msg)
 
         # here something to obtain email and SMS alerts
         return
 
-    # Load current file and append the new data
-    df = pd.read_parquet(raw_path)
-    df = pd.concat([df, data_raw], ignore_index=False)
-    df = df.sort_values(['ticker'])
-    df = df.sort_index()
+    # Append the new data
+    df_new = pd.concat([df_existing, data_raw], ignore_index=False)
+    df_new = df_new.sort_values(['ticker'])
+    df_new = df_new.sort_index()
 
-    # Save new raw_data
-    df.to_parquet(raw_path)
+    # Trim the data to keep only one year of data in the production dataset
+    cutoff = pd.Timestamp(date_today) - pd.DateOffset(years=2)
+    df_new = df_new[df_new.index >= cutoff]
 
-    # Process data and save processed file
-    from src.data_pipelines.processor import process_pipeline_data
-    df_processed = process_pipeline_data(df)
-    processed_path = project_root / "data" / "processed" / name
-    df_processed.to_parquet(processed_path)
+    # Process data
+    df_processed = process_pipeline_data(df_new)
 
-    # Build features and saved data containing the features
-    import src.data_pipelines.features_equities as feat
+    # Build features and save the updated data
     df_features = feat.add_momentum_features(df_processed)
 
     # bespoke momentum: standard momentum (last year except last month), and short-term reversal
@@ -98,5 +117,8 @@ def run_equity_pipeline(tickers: list[str],
     df_features = feat.add_volatility_features(df_features)
     df_features = feat.add_mean_rev_features(df_features)
 
-    features_path = project_root / "data" / "features" / name
-    df_features.to_parquet(features_path)
+    # Save new file
+    df_features.to_parquet(data_path)
+
+    logger.info(f"Today's {date_today} pipeline successfully ran")
+    logger.info(f"Final data has {len(df_features)} rows for {df_features['ticker'].nunique()} tickers")

@@ -3,6 +3,7 @@ Fetches historical data from Interactive Brokers.
 """
 
 import pandas as pd
+import datetime
 import logging
 import time
 from ib_insync import Contract
@@ -48,6 +49,7 @@ def create_contract(
 def fetch_historical_data(
         conn: IBConnection,
         contract_specs: list[dict],
+        end_date: datetime.date | str = '',
         duration: str = '1 Y',
         bar_size: str = '1 day',
         what_to_show: str = 'TRADES',
@@ -60,6 +62,7 @@ def fetch_historical_data(
         conn: IBConnection object
         contract_specs: a list of contract spec dictionaries containing the arguments of create_contract()
             !! the key of the dictionaries must correspond to the arguments of create_contract() !!
+        end_date: str indicating the end time of the fetch, default '' indicated current time
         duration: How far back ('1 D', '1 W', '1 M', '1 Y')
         bar_size: Bar size ('1 min', '5 mins', '1 hour', '1 day')
         what_to_show: Data type ('TRADES', 'MIDPOINT', 'BID', 'ASK', ‘BID_ASK’, ‘ADJUSTED_LAST’, ‘HISTORICAL_VOLATILITY’, ‘OPTION_IMPLIED_VOLATILITY’)
@@ -80,7 +83,7 @@ def fetch_historical_data(
         # Fetch historical data
         bars = conn.ib.reqHistoricalData(
             contract,
-            endDateTime='',
+            endDateTime=end_date,
             durationStr=duration,
             barSizeSetting=bar_size,
             whatToShow=what_to_show,

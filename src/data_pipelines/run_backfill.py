@@ -2,7 +2,7 @@
 Backfill script: fetches an initial research dataset
 This script is designed as a one-off task, to be run manually when starting a new universe or refreshing a research dataset
 """
-
+import yaml
 import logging
 import pandas as pd
 from datetime import date, timedelta
@@ -10,15 +10,13 @@ from dateutil.relativedelta import relativedelta
 from pathlib import Path
 from src.data_pipelines.validator import validate_pipeline_data
 from src.data_pipelines.processor import process_pipeline_data
+from src.execution.ib_connection import IBConnection
+from src.data_pipelines.ib_fetcher import fetch_historical_data
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def run_backfill(tickers: list[str],
-                        source: str,
-                        name: str,
-                        start_date: str,
-                        end_date: str) -> None:
+def run_backfill(universe: str, start_date: str, end_date: str) -> None:
     """
     Fetch a research dataset.
     Steps are:
@@ -28,9 +26,7 @@ def run_backfill(tickers: list[str],
         4. save to disk
 
     Arguments:
-        tickers: list of strings (tickers) for the universe of instruments
-        source: 'yahoo' or 'IB' depending on which source is used to fetch data
-        name: name of the file to save
+        universe: name of the equity universe in the config YAML file
         start_date: start date for backfill, format YYYY-MM-DD
         end_date: end date for backfill, format YYYY-MM-DD
 
@@ -39,48 +35,51 @@ def run_backfill(tickers: list[str],
     """
 
     project_root = Path(__file__).parent.parent.parent  # this assumes src/data_pipelines
-    data_research = project_root / "data" / "features" / f"{name}_research.parquet"
-    data_production = project_root / "data" / "features" / f"{name}_production.parquet"
+    data_research = project_root / "data" / "research" / f"{universe}_research.parquet"
+    data_production = project_root / "data" / "production" / f"{universe}_production.parquet"
 
-    if source == 'yahoo':
-        from src.data_pipelines.yahoo_fetcher import fetch_tickers
-        data_raw = fetch_tickers(tickers, start_date, end_date)
+    config_path = project_root / "config" / "equity_universes.yaml"
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
 
-    elif source == 'IB':
-        from src.execution.ib_connection import IBConnection
-        from src.data_pipelines.ib_fetcher import fetch_historical_data
+    if universe not in config:
+        raise ValueError(f"Universe '{universe}' not found in {config_path}")
 
-        conn = IBConnection()
-        try:
-            conn.connect()
-            contract_specs = []
-            for ticker in tickers:
-                ticker_dic = {'sec_type': 'STK', 'symbol': ticker}
-                contract_specs.append(ticker_dic)
+    tickers = config[universe]
 
-            # deal with the start and end dates so it works with how the fetcher is defined
-            s = date.fromisoformat(start_date)
-            e = date.fromisoformat(end_date)
+    conn = IBConnection()
+    try:
+        conn.connect()
+        contract_specs = []
+        for ticker in tickers:
+            ticker_dic = {'sec_type': 'STK', 'symbol': ticker}
+            contract_specs.append(ticker_dic)
 
-            all_data = []
-            chunk_end = e
-            while chunk_end > s:
-                chunk_start = max(s, chunk_end - relativedelta(years=1))
-                duration = (chunk_end - chunk_start).days
-                chunk = fetch_historical_data(conn, contract_specs, end_date=chunk_end, duration=f'{duration} D')
-                all_data.append(chunk)
-                chunk_end = chunk_start
+        # deal with the start and end dates so it works with how the fetcher is defined
+        s = date.fromisoformat(start_date)
+        e = date.fromisoformat(end_date)
 
-            data_raw = pd.concat(all_data, ignore_index=False)
-            data_raw = data_raw.drop_duplicates()
-            # The procedure fills "backwards", so sort on tickers and index (date)
-            data_raw = data_raw.sort_values(['ticker'])
-            data_raw = data_raw.sort_index()
-        finally:
-            conn.disconnect()
+        all_data = []
+        chunk_end = e
+        while chunk_end > s:
+            chunk_start = max(s, chunk_end - relativedelta(days=365))
+            duration = (chunk_end - chunk_start).days
+            chunk = fetch_historical_data(conn, contract_specs, end_date=chunk_end, duration=f'{duration} D')
+            all_data.append(chunk)
+            chunk_end = chunk_start
 
-    else:
-        raise ValueError(f"Unknown source: {source}")
+        data_raw = pd.concat(all_data, ignore_index=False)
+        data_raw = data_raw.drop_duplicates()
+        data_raw = data_raw[data_raw.index >= pd.Timestamp(start_date)]
+        data_raw = data_raw[data_raw.index <= pd.Timestamp(end_date)]
+
+        # The procedure fills "backwards", so sort on tickers and index (date)
+        data_raw = data_raw.sort_index()
+        data_raw = data_raw.sort_values(['ticker'])
+
+    finally:
+        conn.disconnect()
+
 
     # Validate raw data
     validation_dict = validate_pipeline_data(data_raw, tickers, "backfill")
@@ -105,5 +104,5 @@ def run_backfill(tickers: list[str],
     df_production = df_processed[df_processed.index >= cutoff]
     df_production.to_parquet(data_production)
 
-    logger.info(f"Research dataset {name} successfully saved")
+    logger.info(f"Research and production datasets {universe} successfully saved")
     logger.info(f"Final data has {len(df_processed)} rows for {df_processed['ticker'].nunique()} tickers")

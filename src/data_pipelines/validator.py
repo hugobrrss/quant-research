@@ -92,9 +92,9 @@ def validate_pipeline_data(df: pd.DataFrame,
             validator_summary["warning"].append(msg)
 
         # outliers
-        df['daily_return'] = df.groupby('ticker')['Close'].pct_change()
+        df['return'] = df.groupby('ticker')['Close'].pct_change()
         threshold_outlier = 0.5
-        outlier_tickers = df.loc[np.abs(df['daily_return']) > threshold_outlier,'ticker'].tolist()
+        outlier_tickers = df.loc[np.abs(df['return']) > threshold_outlier,'ticker'].tolist()
         if outlier_tickers:
             msg = f"Found outlier(s) in tickers: {outlier_tickers}"
             logger.warning(msg)
@@ -154,13 +154,8 @@ def validate_pipeline_data(df: pd.DataFrame,
             dates_in_data = df.index.normalize().unique()
             expected = pd.Timestamp(expected_date)
 
-            if len(dates_in_data) == 1:
-                if dates_in_data[0] != expected:
-                    msg = f"Expected date: {expected_date}, but got {dates_in_data[0]}"
-                    logger.critical(msg)
-                    validator_summary["critical"].append(msg)
-            else:
-                msg = f"Expected 1 date, found {len(dates_in_data)}: {dates_in_data.tolist()}"
+            if expected not in dates_in_data:
+                msg = f"Expected date {expected_date} not found in fetched data"
                 logger.critical(msg)
                 validator_summary["critical"].append(msg)
 

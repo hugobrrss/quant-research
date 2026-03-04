@@ -21,7 +21,6 @@ def process_pipeline_data(df: pd.DataFrame) -> pd.DataFrame:
     """
 
     df = df.copy()
-    df = df.sort_values('ticker').sort_index()
 
     outlier_thresh = 0.5
 

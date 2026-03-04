@@ -93,8 +93,8 @@ def add_mean_rev_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df['ma_21d'] = df.groupby('ticker')['Close'].transform(lambda x: x.rolling(21).mean())
     df['ma_50d'] = df.groupby('ticker')['Close'].transform(lambda x: x.rolling(50).mean())
-    df['dist_from_ma_21d'] = (df.groupby('ticker')['Close'] - df.groupby('ticker')['ma_21d']) / df.groupby('ticker')['ma_21d']
-    df['dist_from_ma_50d'] = (df.groupby('ticker')['Close'] - df.groupby('ticker')['ma_50d']) / df.groupby('ticker')['ma_50d']
+    df['dist_from_ma_21d'] = (df['Close'] - df['ma_21d']) / df['ma_21d']
+    df['dist_from_ma_50d'] = (df['Close'] - df['ma_50d']) / df['ma_50d']
 
     logger.info(f"Added mean-reversion features: ma_21d, ma_50d, dist_from_ma_21d, dist_from_ma_50d")
     return df

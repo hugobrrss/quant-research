@@ -6,23 +6,23 @@ Fetches, validates, processes, and stores market data. In particular, the pipeli
 
                      after processing -> features building and saving of data
 """
-
+import yaml
 import pandas as pd
 import logging
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
 from src.data_pipelines.validator import validate_pipeline_data
 from src.data_pipelines.processor import process_pipeline_data
 import src.data_pipelines.features_equities as feat
+from src.execution.ib_connection import IBConnection
+from src.data_pipelines.ib_fetcher import fetch_historical_data
 
 # set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def run_equity_pipeline(tickers: list[str],
-                        source: str,
-                        name: str) -> None:
+def run_equity_pipeline(universe: str) -> None:
     """
     Run the full equity data pipeline.
     Steps are:
@@ -33,15 +33,24 @@ def run_equity_pipeline(tickers: list[str],
         5. save to disk
 
     Arguments:
-        tickers: list of strings (tickers)
-        source: 'yahoo' or 'IB' depending on which source is used for fetching data
-        name: name of the file to which data is saved, should correspond to a universe of stocks, eg sp500
+        universe: name of the equity universe in the config YAML file
     """
+
+    # Obtain the list of tickers from the config file
+    project_root = Path(__file__).parent.parent.parent
+    config_path = project_root / "config" / "equity_universes.yaml"
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+
+    if universe not in config:
+        raise ValueError(f"Universe '{universe}' not found in {config_path}")
+
+    tickers = config[universe]
 
     date_today = datetime.now().date()
 
     project_root = Path(__file__).parent.parent.parent  # this assumes src/data_pipelines
-    data_path = project_root / "data" / "features" / f"{name}_production.parquet"
+    data_path = project_root / "data" / "production" / f"{universe}_production.parquet"
 
     # Load current data
     if not data_path.exists():
@@ -58,28 +67,25 @@ def run_equity_pipeline(tickers: list[str],
         logger.info(f"Today's ({date_today}) data already fetched")
         return
 
-    if source == 'yahoo':
-        from src.data_pipelines.yahoo_fetcher import fetch_tickers
-        data_raw = fetch_tickers(tickers, date_today.strftime("%Y-%m-%d"), date_today.strftime("%Y-%m-%d"))
+    conn = IBConnection()
+    try:
+        conn.connect()
+        contract_specs = []
+        for ticker in tickers:
+            ticker_dic = {'sec_type': 'STK', 'symbol': ticker}
+            contract_specs.append(ticker_dic)
 
-    elif source == 'IB':
-        from src.execution.ib_connection import IBConnection
-        from src.data_pipelines.ib_fetcher import fetch_historical_data
+        last_date = df_existing.index.max().date()
+        days_gap = (date_today - last_date).days
+        data_raw = fetch_historical_data(conn, contract_specs, duration=f'{days_gap} D', bar_size='1 day')
 
-        conn = IBConnection()
-        try:
-            conn.connect()
-            contract_specs = []
-            for ticker in tickers:
-                ticker_dic = {'sec_type': 'STK', 'symbol': ticker}
-                contract_specs.append(ticker_dic)
+        # trim the data: IB fetcher likely works on trading and not calendar days, so duration will overshoot
+        last_date = df_existing.index.max()
+        data_raw = data_raw[data_raw.index > last_date]
 
-            data_raw = fetch_historical_data(conn, contract_specs, duration='1 D', bar_size='1 day')
-        finally:
-            conn.disconnect()
+    finally:
+        conn.disconnect()
 
-    else:
-        raise ValueError(f"Unknown source: {source}")
 
     # Validate raw data
     validation_dict = validate_pipeline_data(data_raw, tickers, "daily", date_today.strftime("%Y-%m-%d"))
@@ -95,8 +101,8 @@ def run_equity_pipeline(tickers: list[str],
 
     # Append the new data
     df_new = pd.concat([df_existing, data_raw], ignore_index=False)
-    df_new = df_new.sort_values(['ticker'])
     df_new = df_new.sort_index()
+    df_new = df_new.sort_values(['ticker'])
 
     # Trim the data to keep only one year of data in the production dataset
     cutoff = pd.Timestamp(date_today) - pd.DateOffset(years=2)

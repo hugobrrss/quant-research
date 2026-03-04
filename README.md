@@ -33,7 +33,7 @@ quant-research/
 1. Create virtual environment:
    ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   source venv/bin/activate  
    ```
 
 2. Install dependencies:
@@ -49,20 +49,10 @@ quant-research/
 
 ## Strategy Focus
 
-- **Momentum**: Cross-sectional and time-series momentum across asset classes
+- **Momentum**: Cross-sectional and time-series equity momentum 
 - **Managed Futures**: Trend-following with dynamic position sizing
-- **Global Macro**: Factor-based allocation using economic indicators
+- **Systematic Global Macro**: Factor-based allocation using economic indicators
 
-## Usage
-
-```python
-# Example: Fetch data and generate signals
-from src.data_pipelines import fetch_prices
-from src.strategies import momentum_signal
-
-prices = fetch_prices(['SPY', 'QQQ', 'TLT'])
-signals = momentum_signal(prices, lookback=252)
-```
 
 ## License
 

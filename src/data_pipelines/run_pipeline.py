@@ -128,3 +128,13 @@ def run_equity_pipeline(universe: str) -> None:
 
     logger.info(f"Today's {date_today} pipeline successfully ran")
     logger.info(f"Final data has {len(df_features)} rows for {df_features['ticker'].nunique()} tickers")
+
+    if __name__ == "__main__":
+        import sys
+        if len(sys.argv) != 4:
+            print("Usage: python -m src.data_pipelines.run_backfill <universe> <start_date> <end_date>")
+            sys.exit(1)
+
+        universe = sys.argv[1]
+
+        run_equity_pipeline(universe)

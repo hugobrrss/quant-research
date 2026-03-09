@@ -106,3 +106,15 @@ def run_backfill(universe: str, start_date: str, end_date: str) -> None:
 
     logger.info(f"Research and production datasets {universe} successfully saved")
     logger.info(f"Final data has {len(df_processed)} rows for {df_processed['ticker'].nunique()} tickers")
+
+    if __name__ == "__main__":
+        import sys
+        if len(sys.argv) != 4:
+            print("Usage: python -m src.data_pipelines.run_backfill <universe> <start_date> <end_date>")
+            sys.exit(1)
+
+        universe = sys.argv[1]
+        start_date = sys.argv[2]
+        end_date = sys.argv[3]
+
+        run_backfill(universe, start_date, end_date)

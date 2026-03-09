@@ -29,3 +29,5 @@ ib_insync
 fredapi
 
 pyyaml
+
+lxml

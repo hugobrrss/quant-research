@@ -68,7 +68,7 @@ def validate_pipeline_data(df: pd.DataFrame,
                 validator_summary["warning"].append(msg)
 
         # all NaN tickers, for all dates
-        tickers_allnan = df[price_columns].isna().groupby(df['ticker']).all().all(axis=1)
+        tickers_allnan = df.groupby('ticker')[price_columns].apply(lambda x: x.isna().all().all())
         tickers_allnan = tickers_allnan[tickers_allnan].index.tolist()
         if tickers_allnan:
             msg = f"Found {len(tickers_allnan)} tickers with all NaN values for all dates: {tickers_allnan}"

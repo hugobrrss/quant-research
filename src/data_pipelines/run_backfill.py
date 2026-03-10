@@ -66,6 +66,7 @@ def run_backfill(universe: str, start_date: str, end_date: str) -> None:
             duration = (chunk_end - chunk_start).days
             chunk = fetch_historical_data(conn, contract_specs, end_date=chunk_end, duration=f'{duration} D')
             all_data.append(chunk)
+            logger.info(f"Fetched chunk ending {chunk_end}, got {len(chunk)} rows")
             chunk_end = chunk_start
 
         data_raw = pd.concat(all_data, ignore_index=False)

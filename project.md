@@ -1,8 +1,17 @@
 # Quant Research Project - Context & Progress
 
+## Project workflow
+- Your grill me - you are not a substitution tool, just a super powerful assistant and brainstormer. I'm not looking for comfort.  
+- I aim for top-quality, high-end design and being as close as possible to best practices in quant shops. 
+- We use Claude code for tedious and *uninteresting* tasks such as setup or config steps
+- I work on two machines: principally my personal Macbook Air, but also on my work laptop
+- I use GitHub to go from one machine to the next seemlessly (project url is given below)
+- I use PyCharm. All the code test/stress-testing is done though Jupyter notebooks in PyCharm
+- We write most scripts iteratively: you guide me and question me on the architecture, but I write the code and you correct it. It is an iterative and back and forth process
+
 ## Project Overview
 
-Production-grade quantitative finance infrastructure for systematic trading via Interactive Brokers. Built by a PhD economist transitioning into alternative asset management/quant research.
+Production-grade quantitative finance infrastructure for systematic trading via Interactive Brokers. Built by a PhD economist transitioning into alternative asset management/quant research. The goal is to add a line on my CV that we help me get a job in the quant buy-side industry. 
 
 ## Project Architecture
 quant-research/

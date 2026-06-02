@@ -131,8 +131,8 @@ def run_equity_pipeline(universe: str) -> None:
 
 if __name__ == "__main__":
     import sys
-    if len(sys.argv) != 4:
-        print("Usage: python -m src.data_pipelines.run_pipeline <universe> <start_date> <end_date>")
+    if len(sys.argv) != 2:
+        print("Usage: python -m src.data_pipelines.run_pipeline <universe>")
         sys.exit(1)
 
     universe = sys.argv[1]

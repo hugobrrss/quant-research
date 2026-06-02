@@ -1,6 +1,6 @@
 # Quant Research
 
-Systematic trading research platform for developing, backtesting, and deploying quantitative strategies via Interactive Brokers.
+Production-grade quantitative finance infrastructure for systematic trading via Interactive Brokers.
 
 ## Overview
 
@@ -14,38 +14,20 @@ This project provides infrastructure for:
 
 ```
 quant-research/
-├── config/              # Strategy parameters, model configs, API settings
+├── config/                  # confi files, API settings, YAML universe
 ├── data/
-│   ├── raw/             # Raw market data (prices, fundamentals, alt data)
-│   ├── processed/       # Cleaned and normalized datasets
-│   └── features/        # Engineered features for modeling
-├── notebooks/           # Research notebooks and analysis
+│   ├── research/            # full daily data sit here
+│   └── production/          # the dynamic production file containing the last 3 years
+├── notebooks/exploration/   # Research notebooks and analysis
 ├── src/
-│   ├── data_pipelines/  # ETL, data fetching, feature engineering
-│   ├── models/          # ML models (return prediction, risk, regime)
-│   ├── strategies/      # Strategy logic (signals, portfolio construction)
-│   └── execution/       # Order execution, IB integration, risk checks
-└── tests/               # Unit and integration tests
+│   ├── data_pipelines/      # data fetching scripts, validators, features construction
+│   ├── models/              # ML and other models
+│   ├── strategies/          # Strategy logic (signals, portfolio construction)
+│   └── execution/           # Order execution, IB integration
+├── tests/
+├── requirements.txt
+└── .env              
 ```
-
-## Setup
-
-1. Create virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  
-   ```
-
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. Configure environment:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your API credentials
-   ```
 
 ## Strategy Focus
 
@@ -54,6 +36,6 @@ quant-research/
 - **Systematic Global Macro**: Factor-based allocation using economic indicators
 
 
-## License
+## Disclosure
 
 Private research project.

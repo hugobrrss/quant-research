@@ -114,3 +114,6 @@ logs/
 *.log
 
 project.md
+
+.DS_Store
+**/.DS_Store

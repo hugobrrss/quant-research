@@ -23,14 +23,30 @@ https://github.com/hugobrrss/quant-research
 | russell1000_research.parquet | Mac only | 3yr IB data, full features |
 | crsp_clean.parquet | Mac only | 30yr CRSP daily data, ~16k securities |
 
-## Droplet Startup Sequence (MANUAL — not yet automated)
-1. `sudo Xvfb :1 -screen 0 1024x768x24 &`
-2. `sudo -E DISPLAY=:1 /opt/ibgateway/ibgateway &`
-3. Log in manually via xdotool (see previous chat for coordinates)
-4. Uncheck Read-Only API in Configure → Settings → API → Settings
-5. Verify: `sudo ss -tlnp | grep java` should show port 4002
+## Droplet Current State
 
-**First task next session:** automate steps 2-4 into a script.
+**Server:** DigitalOcean, IP 104.248.166.125, user: hugo, Ubuntu 24.04 LTS
+**Disk:** 24GB, ~40% used
+**Python:** 3.12, venv at ~/quant-research/venv
+**Code:** cloned from GitHub at ~/quant-research
+**Data:** russell1000_production.parquet and russell1000_research.parquet present at ~/quant-research/data/
+
+**IB Gateway status: NOT running**
+- Previous attempt used the auto-updating installer → wrong path structure, incompatible with IBC
+- Correct approach: offline installer + IBC (Interactive Brokers Controller)
+- Offline installer URL: https://download2.interactivebrokers.com/installers/ibgateway/stable-standalone/ibgateway-stable-standalone-linux-x64-offline.sh
+- IBC installs to /opt/ibc, expects IB Gateway at ~/Jts/ibgateway/1037/
+- IBC config.ini credentials must be set (IbLoginId, IbPassword, TradingMode=paper, ExistingSessionDetectedAction=disconnect, AcceptNonBrokerageAccountWarning=yes, ReadOnlyApi=no)
+- Xvfb required for virtual display: sudo Xvfb :1 -screen 0 1024x768x24 &
+
+**Next session exact steps:**
+1. Download offline IB Gateway installer
+2. Install to default location (~/Jts)
+3. Reinstall IBC to /opt/ibc
+4. Configure /root/ibc/config.ini
+5. Run gatewaystart.sh and verify java process is running
+6. Test Python connection on port 4002
+7. Set up systemd service for auto-start on reboot
 
 ## Phase Progress
 - ✅ Phase 1: Data pipelines (fetch, validate, process, features)

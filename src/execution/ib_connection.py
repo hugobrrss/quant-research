@@ -4,6 +4,11 @@ Interactive Brokers connection management.
 
 import logging
 from ib_insync import *
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -23,21 +28,16 @@ class IBConnection:
             # ... do stuff with ib ...
     """
 
-    def __init__(
-        self,
-        host: str = '127.0.0.1',
-        port: int = 7497,  # 7497 = paper, 7496 = live
-        client_id: int = 1
-    ):
+    def __init__(self, host=None, port=None, client_id=None):
         """
         Args:
             host: TWS host (localhost for local TWS)
             port: TWS port (7497 for paper trading, 7496 for live)
             client_id: Unique client identifier (increment if running multiple connections)
         """
-        self.host = host
-        self.port = port
-        self.client_id = client_id
+        self.host = host if host is not None else os.getenv("IB_HOST", "127.0.0.1")
+        self.port = port if port is not None else int(os.getenv("IB_PORT", "7497"))
+        self.client_id = client_id if client_id is not None else int(os.getenv("IB_CLIENT_ID", "1"))
         self.ib = IB()
 
     def connect(self) -> IB:

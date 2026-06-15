@@ -1,5 +1,5 @@
 """
-Daily data pipeline orchestration script
+Data pipeline orchestration script
 Fetches, validates, processes, and stores market data. In particular, the pipeline flow is as follows:
     fetch → validate → if critical, stop and notify
                      → if ok/warning, proceed to processor → processor handles the warnings (drop duplicates, fill NaN, etc.)
@@ -88,7 +88,7 @@ def run_equity_pipeline(universe: str) -> None:
 
 
     # Validate raw data
-    validation_dict = validate_pipeline_data(data_raw, tickers, "daily", date_today.strftime("%Y-%m-%d"))
+    validation_dict = validate_pipeline_data(data_raw, tickers, "incremental", date_today.strftime("%Y-%m-%d"))
 
     if validation_dict['critical']:
         # instructions to stop the pipeline and obtain an alert
@@ -126,7 +126,7 @@ def run_equity_pipeline(universe: str) -> None:
     # Save new file
     df_features.to_parquet(data_path)
 
-    logger.info(f"Today's {date_today} pipeline successfully ran")
+    logger.info(f"Pipeline run for {date_today} completed")
     logger.info(f"Final data has {len(df_features)} rows for {df_features['ticker'].nunique()} tickers")
 
 if __name__ == "__main__":

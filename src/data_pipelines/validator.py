@@ -25,7 +25,7 @@ def validate_pipeline_data(df: pd.DataFrame,
     Arguments:
         df: raw DataFrame of prices
         expected_tickers: list of tickers expected to be fetched
-        mode: 'backfill' or 'daily': the set of checks for backfill vs. daily changes
+        mode: 'backfill' or 'incremental': the set of checks for backfill vs. incremental pipelines
         expected_date: expected date of data to be fetched, format 'YYYY-MM-DD'
     Returns:
         a summary dictionary with severity levels 'Ok', 'warning' or 'critical', and the associated warnings as values
@@ -103,9 +103,9 @@ def validate_pipeline_data(df: pd.DataFrame,
         logger.info(f"Validation completed: {len(validator_summary['warning'])} warnings, {len(validator_summary['critical'])} critical")
         return validator_summary
 
-    elif mode == 'daily':
+    elif mode == 'incremental':
 
-        logger.info("Starting daily validation")
+        logger.info("Starting incremental validation")
 
         # empty data
         if df.empty:

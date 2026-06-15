@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""Healthcheck for the IB Gateway on this droplet.
+
+Connects to the local API and confirms the session is logged in (a managed
+account is returned). On failure it alerts via Telegram and restarts the
+ibgateway service, then exits 0 once it has done its job (detect + remediate)
+so systemd never leaves the unit 'failed' — the alert is the signal.
+"""
+import os
+import sys
+import subprocess
+import urllib.parse
+import urllib.request
+
+HOST = "127.0.0.1"
+PORT = 4002
+CLIENT_ID = 99  # reserved for the healthcheck; never reuse for pipelines
+
+
+def send_alert(text: str) -> None:
+    token = os.environ.get("TG_BOT_TOKEN")
+    chat_id = os.environ.get("TG_CHAT_ID")
+    if not token or not chat_id:
+        return
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode()
+    try:
+        urllib.request.urlopen(url, data=payload, timeout=10)
+    except Exception:
+        pass
+
+
+def gateway_healthy() -> tuple[bool, str]:
+    try:
+        from ib_async import IB
+        ib = IB()
+        ib.connect(HOST, PORT, clientId=CLIENT_ID, timeout=15)
+        ok = ib.isConnected() and bool(ib.managedAccounts())
+        ib.disconnect()
+        return ok, "" if ok else "connected but no managed account"
+    except Exception as exc:
+        return False, repr(exc)
+
+
+def main() -> int:
+    ok, detail = gateway_healthy()
+    if ok:
+        return 0
+    print(f"[healthcheck] gateway unhealthy ({detail}); alerting and restarting", file=sys.stderr)
+    send_alert(f"[ALERT] IB Gateway healthcheck failed on the droplet: {detail}. Restarting ibgateway.service.")
+    subprocess.run(["sudo", "/usr/bin/systemctl", "restart", "ibgateway.service"], check=False)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

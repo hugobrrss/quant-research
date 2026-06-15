@@ -3,7 +3,7 @@ Interactive Brokers connection management.
 """
 
 import logging
-from ib_insync import *
+from ib_async import IB
 import os
 from dotenv import load_dotenv
 load_dotenv()

@@ -6,7 +6,7 @@ import pandas as pd
 import datetime
 import logging
 import time
-from ib_insync import Contract
+from ib_async import Contract
 from src.execution.ib_connection import IBConnection
 
 logger = logging.getLogger(__name__)

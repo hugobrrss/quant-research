@@ -104,7 +104,7 @@ def run_equity_pipeline(universe: str) -> None:
     df_new = df_new.sort_index()
     df_new = df_new.sort_values(['ticker'])
 
-    # Trim the data to keep only one year of data in the production dataset
+    # Trim the data to keep only two years of data in the production dataset
     cutoff = pd.Timestamp(date_today) - pd.DateOffset(years=2)
     df_new = df_new[df_new.index >= cutoff]
 

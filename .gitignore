@@ -81,6 +81,7 @@ logs/
 
 # ===== Project Meta =====
 project.md
+log_full.md
 .claude/
 
 # ===== Misc (if used) =====

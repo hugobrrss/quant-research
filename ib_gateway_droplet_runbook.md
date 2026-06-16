@@ -11,8 +11,8 @@ A fully unattended Interactive Brokers paper-trading connection on the droplet:
 
 - IB Gateway logs itself in (no human at the keyboard), survives reboots, and re-establishes its session daily/weekly on its own.
 - The API listens on `127.0.0.1:4002` and is firewalled off from the public internet.
-- A healthcheck probes it every 10 minutes, alerts via Telegram, and self-heals if it finds the gateway down or logged out. _(Too trigger-happy on transients — see §8 for the planned debounce / right-sizing.)_
-- An **incremental**-pipeline timer is **built but intentionally disabled**; to be reconfigured to a **weekly** schedule (`pipeline.timer`) and enabled in Phase 4.
+- A healthcheck probes it every 10 minutes, alerts via Telegram after 3 consecutive fails, and self-heals if it finds the gateway down or logged out.
+- An **incremental**-pipeline timer is enabled and runs weekly 
 
 Verified working after a **cold reboot** with zero manual steps: services came up, the gateway auto-logged-in, and an IB API client connected over localhost returning account `DUP678137`. _(Originally verified with `ib_insync`; the stack migrated to the drop-in `ib_async` on 2026-06-15.)_
 
@@ -81,10 +81,18 @@ All in `/etc/systemd/system/`.
 
 - **`xvfb.service`** — runs `Xvfb :1`, `Restart=always`, `ExecStartPre` removes a stale `/tmp/.X1-lock`.
 - **`ibgateway.service`** — `ExecStart=/home/hugo/ibc/gatewaystart.sh -inline`, `User=hugo`, `Environment=DISPLAY=:1`, `Requires`/`After=xvfb.service`, `Restart=always`, `RestartSec=30`. **Enabled.**
-- **`gateway-healthcheck.service` + `.timer`** — oneshot probe every 10 min (`OnUnitActiveSec=10min`, `OnBootSec=3min`). **Enabled.** (Acts on a single failed probe today — debounce planned, see §8.)
-- **`daily-pipeline.service` + `.timer` + `daily-pipeline-failure.service`** — currently Mon–Fri 21:30 UTC, `Persistent=true`, **DISABLED**. Code is now verified (watched run 2026-06-09). To be **rewritten to a weekly schedule and renamed `pipeline.*`** (frequency-agnostic, since the run cadence is now weekly), then enabled — see §8.
+- **`gateway-healthcheck.service` + `.timer`** — oneshot probe every 10 min (`OnUnitActiveSec=10min`, `OnBootSec=3min`). **Enabled.** (Acts on 3 consecutive failed probes)
+- **`pipeline.service` + `.timer` + `pipeline-failure.service`** — Fri 21:30 UTC, `Persistent=true`.
 
-Helper scripts: `src/execution/gateway_healthcheck.py` (probe) and `src/execution/notify.py` (reusable Telegram sender). **Note:** these currently live only in the droplet's working tree — they were never committed to GitHub, which is why the `ib_async` migration initially missed the healthcheck (its `ib_insync` import broke the probe and bounced the gateway every cycle). Commit them — see §8.
+Helper scripts: `src/execution/gateway_healthcheck.py` (probe) and `src/execution/notify.py` (reusable Telegram sender).
+
+---
+
+### 4.1 How the weekly pipeline runs on the Droplet
+- two `systemd` units working as a pair: _alarm clock + task_
+- `pipeline.timer` is the scheduler (`OnCalendar=Fri 21:30:00` set to Fri-21:30UTC, so after market close in the US). `Persistent=true` ensures the job runs as soon as Droplet is back in case it was down at the scheduled time
+- `pipeline.service` is the task: when the timer fires, systemd starts this service that runs the `run_pipeline.py` script
+- safety net (`OnFailure=`): if `pipeline.service` fails, systemd starts `pipeline-failure.service` which fires a Telegram alert
 
 ---
 
@@ -125,7 +133,7 @@ systemctl list-timers --all --no-pager
 - **`AutoRestartTime=05:00 AM` UTC.** Lets the session persist with a single weekly login (auto-restart, not auto-logoff). 05:00 UTC is clear of the US session (13:30–20:00 UTC) and IB's overnight reset. The weekly forced re-auth is handled automatically because it's paper (no 2FA).
 - **localhost-only via `ufw`.** IB binds the API to all interfaces (`*:4002`); the firewall (`deny incoming`, allow only SSH) is what keeps it private. The loopback interface is never filtered, so local clients work.
 - **Secrets split by tool.** IBC credentials live in `config.ini` because IBC is config-file-based (its documented, supported path). Telegram secrets use a systemd `EnvironmentFile` because the healthcheck reads env vars. Both files are `600`, owned by `hugo`, outside the repo.
-- **Healthcheck self-heal.** `Restart=always` only catches a *crash*. The probe catches the *silent* failure (process alive but logged out / API unresponsive), alerts, and restarts. It exits 0 after remediating so the unit never sits in a "failed" state — the Telegram alert is the signal. **Caveat (observed 2026-06):** it acts on a *single* failed probe, so it alerts + restarts on benign transients — notably the gateway's own 05:00 `AutoRestartTime` window and IB's overnight reset. Needs a consecutive-failure debounce — see §8.
+- **Healthcheck self-heal.** `Restart=always` only catches a *crash*. The probe catches the *silent* failure (process alive but logged out / API unresponsive), alerts, and restarts. It exits 0 after remediating so the unit never sits in a "failed" state — the Telegram alert is the signal. 
 
 ---
 
@@ -147,11 +155,6 @@ A controlled, tested upgrade — never automatic. (Could be wrapped in an `updat
 
 ## 8. Open items / follow-ups
 
-- **Data gap backfill — DONE (2026-06-09).** The 91-day gap was filled via a watched `run_pipeline` run; seam continuity verified against the trading calendar. (11 tickers frozen at 2026-03-09 with IB Error 200 — delisted/renamed/malformed symbol; triage in Phase 6.)
-- **`ib_async` migration — DONE (2026-06-15).** Swapped imports in `ib_fetcher.py`, `ib_connection.py`, and the droplet's `gateway_healthcheck.py`; updated `requirements.txt`; reinstalled on both machines; smoke-tested. (`ib_insync` is unmaintained since the original author's death; `ib_async` is the drop-in successor.)
-- **Activate the incremental pipeline (Phase 4):** watched manual run done (2026-06-09; `.env` / `IB_PORT=4002` / clientId 1 all verified). Remaining: rewrite the `daily-pipeline.*` units to a **weekly** `pipeline.timer` — fire on a weekday evening after the US close (must be a trading-day evening, or the incremental validator won't find today's bar) — then `sudo systemctl enable --now pipeline.timer`.
-- **Commit the operational scripts (hygiene, priority):** `gateway_healthcheck.py` and `notify.py` live only on the droplet and aren't in git. Bring them into the repo (code tracked; `healthcheck.env` secrets stay out) so future migrations and repo-wide greps catch them.
-- **Right-size the healthcheck:** add a 2–3 consecutive-failure debounce so transient blips (the 05:00 restart window, IB's overnight reset, momentary timeouts) no longer alert/restart. Given the weekly cadence, optionally relax the interval from 10 min to ~30 min. Defer market-hours-aware checks and restart-rate caps to the live-trading phase.
 - **Second IB username (Phase 5):** for running Mac TWS and the droplet concurrently without session conflict, and to keep live/real-money Mac trading isolated from the droplet's paper automation and its Telegram alerts.
 - **Tighten API access (optional hardening):** add `127.0.0.1` to the Gateway's Trusted IPs and switch `AcceptIncomingConnectionAction` to `reject`.
 - **`nbstripout` (hygiene):** strip notebook outputs on commit — keeps identifiers/data out of public history and makes notebooks read cleaner.

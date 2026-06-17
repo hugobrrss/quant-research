@@ -1,6 +1,6 @@
 # IB Gateway on DigitalOcean Droplet — Runbook
 
-_Reference for the headless, automated IB Gateway setup completed 2026-06-02 (Phase 3.5). Last updated 2026-06-15 (ib_async migration + daily→incremental rename)._
+_Reference for the headless, automated IB Gateway setup completed 2026-06-17 (Phase 5: droplet switched to paper-only login `uuoxpl916`, live pw rotated, `Share=No` decoupling). Last updated 2026-06-15 (ib_async migration + daily→incremental rename)._
 _This is the detailed companion to `project.md`. `project.md` stays synthetic for loading context into new chats; this file holds the full "how and why."_
 
 ---
@@ -52,7 +52,7 @@ DigitalOcean droplet  (Ubuntu 24.04, UTC, ufw: only SSH open)
 | IBC | **3.23.0**, at `~/ibc/` (outside the repo, owned by `hugo`) |
 | IBC config | `~/ibc/config.ini`, `chmod 600` |
 | Launch script | `~/ibc/gatewaystart.sh` (edited; see below) |
-| API port | `4002` (paper), account `DUP678137`, login id `hugobrrss` |
+| API port | `4002` (paper), account `DUP678137`, login id `uuoxpl916` |
 | Alert secrets | `~/ibc/healthcheck.env`, `chmod 600` (Telegram bot token + chat id) |
 | venv | `~/quant-research/venv` |
 | Healthcheck reserved clientId | `99` (never reuse for pipelines) |
@@ -71,7 +71,7 @@ DigitalOcean droplet  (Ubuntu 24.04, UTC, ufw: only SSH open)
 - `ReadOnlyApi=no` (so the API can place orders)
 - `AcceptIncomingConnectionAction=accept` (interim; see §7 for the tighten-later note)
 - `AutoRestartTime=05:00 AM` (UTC, since the box is UTC)
-- `IbLoginId` / `IbPassword` = paper credentials (same login as Mac TWS)
+- `IbLoginId` / `IbPassword` = paper credentials (username `uuoxpl916`, different from the Mac TWS login)
 
 ---
 
@@ -128,8 +128,14 @@ systemctl list-timers --all --no-pager
 
 - **Offline `stable-standalone` installer.** The Gateway has no self-updating build (unlike TWS), and the standalone installer gives a deterministic path (`~/Jts/ibgateway/1045`) and a pinned version. Reproducible and IBC-compatible.
 - **`-inline` flag.** By default `gatewaystart.sh` wraps the gateway in an `xterm` and backgrounds it, so the launcher returns immediately — which would make systemd think the service died and restart-loop it. `-inline` `exec`s the launcher in the foreground so systemd supervises the real JVM.
-- **Run as `hugo`, never root.** A Java GUI app holding broker credentials should not run as root. The repo and venv already live under `hugo`. (A dedicated service account is the cleaner answer for a *live* system; revisit at Phase 5.)
-- **`ExistingSessionDetectedAction=primaryoverride`.** The droplet should always win and reclaim the session if something bumps it. **Consequence:** same login as Mac TWS, and IB allows one session per user — the droplet will bump a Mac TWS session on this account. For concurrent use, add a second IB username for the automated session (Phase 5).
+- **Run as `hugo`, never root.** A Java GUI app holding broker credentials should not run as root. The repo and venv already live under `hugo`. (A dedicated service account is the cleaner answer for a live system; revisit when the droplet goes live — future live-trading phase.)
+- **ExistingSessionDetectedAction=primaryoverride.** The droplet reclaims the paper
+  session if anything else logs into it. Since it now uses its own paper username
+  (uuoxpl916) and live/paper data sharing is off (Share=No), it is decoupled from
+  hugobrrss/Mac TWS — a manual live login no longer bumps the droplet (Phase 5, 2026-06-17).
+  primaryoverride now only matters if something logs into the PAPER account itself
+  (Mac TWS in paper mode, mobile app on paper). A separate automated LIVE identity
+  (dedicated trade-only username) is a future live-trading-phase item, not this setup.
 - **`AutoRestartTime=05:00 AM` UTC.** Lets the session persist with a single weekly login (auto-restart, not auto-logoff). 05:00 UTC is clear of the US session (13:30–20:00 UTC) and IB's overnight reset. The weekly forced re-auth is handled automatically because it's paper (no 2FA).
 - **localhost-only via `ufw`.** IB binds the API to all interfaces (`*:4002`); the firewall (`deny incoming`, allow only SSH) is what keeps it private. The loopback interface is never filtered, so local clients work.
 - **Secrets split by tool.** IBC credentials live in `config.ini` because IBC is config-file-based (its documented, supported path). Telegram secrets use a systemd `EnvironmentFile` because the healthcheck reads env vars. Both files are `600`, owned by `hugo`, outside the repo.
@@ -155,7 +161,6 @@ A controlled, tested upgrade — never automatic. (Could be wrapped in an `updat
 
 ## 8. Open items / follow-ups
 
-- **Second IB username (Phase 5):** for running Mac TWS and the droplet concurrently without session conflict, and to keep live/real-money Mac trading isolated from the droplet's paper automation and its Telegram alerts.
 - **Tighten API access (optional hardening):** add `127.0.0.1` to the Gateway's Trusted IPs and switch `AcceptIncomingConnectionAction` to `reject`.
 - **`nbstripout` (hygiene):** strip notebook outputs on commit — keeps identifiers/data out of public history and makes notebooks read cleaner.
 
@@ -166,3 +171,4 @@ A controlled, tested upgrade — never automatic. (Could be wrapped in an `updat
 - Repo is **public by design** (CV goal). Secrets are gitignored (`.env`, `*.pem`, `*.key`, `credentials.json`) and confirmed off GitHub. History scan found no leaked credentials — only the paper account id in old committed notebook output (an identifier, not a secret; not worth rewriting history).
 - `ufw` active: default deny incoming, only `22/tcp` (OpenSSH) allowed.
 - **Telegram bot token was accidentally printed once and rotated** via @BotFather. Lesson: never `source`/echo a secrets file to the terminal; edit with an editor and verify with redaction (`sed -E 's/=.*/=<hidden>/'`).
+- Droplet credential downgraded from live (`hugobrrss`) to paper-only (`uuoxpl916`) on 2026-06-17; the live password, which had sat in `config.ini` on the public box, was rotated after the switch. The box now only ever holds a credential that can reach paper.

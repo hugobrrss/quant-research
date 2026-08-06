@@ -1,41 +1,55 @@
 # Quant Research
 
-Production-grade quantitative finance infrastructure for systematic trading via Interactive Brokers.
+An independent, production-grade pipeline and infrastructure for systematic equity
+research, built around the Interactive Brokers API and deployed on a cloud server.
 
-## Overview
+This is a personal research project. The data pipeline and supporting
+infrastructure are the mature part of the codebase.  
+The modelling, strategy, and execution layers are research-stage and currently under development.
 
-This project provides infrastructure for:
-- **Data pipelines**: Fetching, cleaning, and feature engineering for market data
-- **ML models**: Predictive models for asset returns, volatility, and regime detection
-- **Systematic strategies**: Momentum, managed futures, and global macro implementations
-- **Live execution**: Order management and position tracking via Interactive Brokers API
+## Status
+**Complete**
+- Data pipeline: automated fetching, validation, cleaning, and feature engineering
+  for about 1000-ticker equity universe via the IB API, with a weekly incremental update.
+- Infrastructure: headless IB Gateway on a Linux cloud server (systemd-supervised,
+  auto-login), a scheduled pipeline timer, a gateway healthcheck with Telegram
+  alerting and auto-restart. 
+- Prediction models: baseline, tree-based, and neural-net return-prediction models
+  (exploratory).
+
+**In progress**
+- First strategy: cross-sectional momentum strategy currently at notebook/backtest stage.
+- Execution: IB Gateway connection and monitoring in place; order management,
+  position tracking, and a live paper-trading layer under development.
+
+**Planned**
+- Additional strategies (managed futures, systematic global macro).
+- Point-in-time, survivorship-free backtest universe (CRSP-based).
 
 ## Project Structure
 
 ```
 quant-research/
-├── config/                  # confi files, API settings, YAML universe
+├── config/ # config files, API settings, YAML universes
 ├── data/
-│   ├── research/            # full daily data sit here
-│   └── production/          # the dynamic production file containing the last 3 years
-├── notebooks/exploration/   # Research notebooks and analysis
+│ ├── research/ # full-history research datasets (gitignored)
+│ └── production/ # rolling 2-year production dataset (gitignored)
+├── notebooks/ # research and exploration
 ├── src/
-│   ├── data_pipelines/      # data fetching scripts, validators, features construction
-│   ├── models/              # ML and other models
-│   ├── strategies/          # Strategy logic (signals, portfolio construction)
-│   └── execution/           # Order execution, IB integration
+│ ├── data_pipelines/ # fetchers, validators, feature engineering, runners
+│ ├── models/ # exploratory return-prediction models
+│ ├── strategies/ # strategy logic (in development)
+│ └── execution/ # IB connection, gateway healthcheck, notifications
 ├── tests/
 ├── requirements.txt
-└── .env              
+└── .env # secrets, gitignored         
 ```
 
-## Strategy Focus
+## Setup
 
-- **Momentum**: Cross-sectional and time-series equity momentum 
-- **Managed Futures**: Trend-following with dynamic position sizing
-- **Systematic Global Macro**: Factor-based allocation using economic indicators
+```bash
+pip install -r requirements.txt
+```
+Running the pipeline requires an Interactive Brokers account and a local `.env`
+(credentials and configuration are not tracked).
 
-
-## Disclosure
-
-Private research project.

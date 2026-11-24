@@ -68,5 +68,81 @@ def test_parse_table_missing_header_raises():
         parse_holdings_table(text)
 
 # --- Test filter ---
+
+EXPECTED_COLUMNS = ["ticker", "name", "sector", "market_value", "price", "exchange", "location"]
+
 def test_filter_keeps_tradable_equities():
-    assert set(filter_equities(parse_holdings_table(FIXTURE))["ticker"])=={"AAPL", "BRK B", "DDS"}
+    eq = filter_equities(parse_holdings_table(FIXTURE))
+    assert set(eq["ticker"])=={"AAPL", "BRK B", "DDS"}
+    assert eq.columns.to_list()==EXPECTED_COLUMNS
+
+# --- Test validation ---
+
+# synthetic data generation
+def make_holdings(n: int = 1000) -> pd.DataFrame:
+    """Clean synthetic holdings that pass every validation check."""
+    sectors = sorted(GICS_SECTORS)
+    return pd.DataFrame({
+        "ticker": [f"T{i}" for i in range(n)],
+        "name": [f"COMPANY {i}" for i in range(n)],
+        "sector": [sectors[i % len(sectors)] for i in range(n)],
+        "market_value": 1e6,
+        "price": 10.0,
+        "exchange": "NYSE",
+        "location": "United States",
+    })
+
+AS_OF = date(2026, 11, 20)
+TODAY = date(2026, 11, 22)
+
+def test_validate_passes_on_clean_data():
+    validate_holdings(make_holdings(),AS_OF,TODAY)
+
+def test_validate_row_count():
+    with pytest.raises(ValueError, match="500"):
+        validate_holdings(make_holdings(500),AS_OF,TODAY)
+
+def test_validate_duplicates():
+    holdings = make_holdings()
+    holdings.loc[1,"ticker"] = "T0"
+    with pytest.raises(ValueError, match="duplicate"):
+        validate_holdings(holdings,AS_OF,TODAY)
+
+def test_validate_missing():
+    holdings = make_holdings()
+    holdings.loc[1,"price"] = None
+    with pytest.raises(ValueError, match="missing"):
+        validate_holdings(holdings,AS_OF,TODAY)
+
+def test_validate_non_positive():
+    holdings = make_holdings()
+    holdings.loc[1,"price"] = 0
+    with pytest.raises(ValueError, match="positive"):
+        validate_holdings(holdings,AS_OF,TODAY)
+
+
+def test_validate_unknown_sector():
+    holdings = make_holdings()
+    holdings.loc[1,"sector"] = "Tech"
+    with pytest.raises(ValueError, match="sectors"):
+        validate_holdings(holdings,AS_OF,TODAY)
+
+def test_validate_reports_all_failures():
+    holdings = make_holdings(500)
+    holdings.loc[1,"sector"] = "Tech"
+    with pytest.raises(ValueError) as exc:
+        validate_holdings(holdings,AS_OF,today=date(2026, 12, 31))
+        msg = str(exc.value)
+        assert "row count" in msg
+        assert "unknown sectors" in msg
+        assert "days before today" in msg
+
+def test_validate_stale_as_of():
+    holdings = make_holdings()
+    with pytest.raises(ValueError, match="as_of"):
+        validate_holdings(holdings,as_of=date(2026,11,4),today=date(2026, 11, 22))
+
+def test_validate_future_as_of():
+    holdings = make_holdings()
+    with pytest.raises(ValueError, match="as_of"):
+        validate_holdings(holdings,as_of=date(2026,11,24),today=date(2026, 11, 22))

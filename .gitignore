@@ -94,3 +94,9 @@ dmypy.json
 .spyderproject
 .spyproject
 
+# private exploration notebooks (kept local)
+notebooks/explo_IBquant_pipeline.ipynb
+notebooks/explo_ishares_holdings.ipynb
+notebooks/explo_phase3.ipynb
+notebooks/explo_phase12.ipynb
+notebooks/crsp95-25_strat-research.ipynb

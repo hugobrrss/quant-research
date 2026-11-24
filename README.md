@@ -18,13 +18,12 @@ The modelling, strategy, and execution layers are research-stage and currently u
   (exploratory).
 
 **In progress**
-- First strategy: cross-sectional momentum strategy currently at notebook/backtest stage.
+- First strategy: cross-sectional momentum strategy currently at notebook/backtest stage (first-pass, intentionally simple to get things rolling).
 - Execution: IB Gateway connection and monitoring in place; order management,
   position tracking, and a live paper-trading layer under development.
 
 **Planned**
 - Additional strategies (managed futures, systematic global macro).
-- Point-in-time, survivorship-free backtest universe (CRSP-based).
 
 ## Project Structure
 
